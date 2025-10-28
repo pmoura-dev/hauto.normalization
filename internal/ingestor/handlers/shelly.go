@@ -1,60 +1,74 @@
 package handlers
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"log"
 
-	"github.com/google/uuid"
 	"github.com/pmoura-dev/beacon"
-	"github.com/pmoura-dev/hauto.normalization/pkg/translators"
-	"github.com/pmoura-dev/hauto.normalization/pkg/translators/shelly"
+	shelly_translators "github.com/pmoura-dev/hauto.normalization/pkg/translators/shelly"
 	"github.com/pmoura-dev/hauto.normalization/pkg/types"
 )
 
-func getDeviceInfo(externalID string) (types.DeviceInfo, error) {
-
-	devices := map[string]types.DeviceInfo{
-		"shellycolorbulb-12345": types.DeviceInfo{
-			DeviceID: uuid.MustParse("b70bb447-825e-4692-8248-bf7cc3564fd9"),
-			Model:    "shelly_color_bulb",
-			Type:     "light",
-		},
-		"shellycolorbulb-67890": types.DeviceInfo{
-			DeviceID: uuid.MustParse("d62820d7-4b63-4949-8e05-3b9187dc261b"),
-			Model:    "shelly_color_bulb",
-			Type:     "light",
-		},
-	}
-
-	return devices[externalID], nil
-}
-
-const (
-	modelShellyColorBulb = "shelly_color_bulb"
+var (
+	ErrInternalError = errors.New("something bad happened")
 )
 
-func ShellyState(publisher beacon.Publisher, message beacon.RoutedMessage) error {
+func ShellyAvailability(ctx context.Context, publisher beacon.Publisher, message beacon.RoutedMessage) error {
+	deviceData := ctx.Value("DEVICE_DATA").(types.DeviceData)
 
-	externalID := message.GetTopicParam("shelly_id")
-
-	// 1. Get device info from registry
-	deviceInfo, err := getDeviceInfo(externalID)
+	rawTopic := fmt.Sprintf(types.AvailabilityTopicFormat, deviceData.DeviceID)
+	topic, err := beacon.NewTopic(rawTopic)
 	if err != nil {
-		return err
+		log.Printf("Error: [%v]\n", err)
+		return ErrInternalError
 	}
 
-	var translator translators.Translator
-	switch deviceInfo.Model {
-	case modelShellyColorBulb:
-		// shellycolorbulb translator
-		translator = shelly.ShellyColorBulbTranslator{}
-	}
-
-	translatedPayload, err := translator.TranslateIngestion(deviceInfo.DeviceID, deviceInfo.Type, message.Payload)
+	payload, err := shelly_translators.ShellyAvailabilityTranslator(
+		message.Payload,
+		deviceData.DeviceID,
+		deviceData.Type,
+	)
 	if err != nil {
-		return err
+		log.Printf("Error: [%v]\n", err)
+		return ErrInternalError
 	}
 
-	// publish message
-	fmt.Println(string(translatedPayload))
+	publisher.Publish(topic, beacon.Message{Payload: payload})
+	return nil
+}
+
+func ShellyColorBulbState(ctx context.Context, publisher beacon.Publisher, message beacon.RoutedMessage) error {
+	deviceData := ctx.Value("DEVICE_DATA").(types.DeviceData)
+
+	// internal topic
+	rawTopic := fmt.Sprintf(types.StateTopicFormat, deviceData.DeviceID)
+	topic, err := beacon.NewTopic(rawTopic)
+	if err != nil {
+		log.Printf("Error: [%v]\n", err)
+		return ErrInternalError
+	}
+
+	var payload []byte
+
+	switch deviceData.Type {
+	case types.DeviceTypeLight:
+		payload, err = shelly_translators.ShellyColorBulbToLightTranslator(
+			message.Payload,
+			deviceData.DeviceID,
+			deviceData.Type,
+		)
+	default:
+		log.Printf("Device type not implemented")
+		return nil
+	}
+
+	if err != nil {
+		log.Printf("Error: [%v]\n", err)
+		return ErrInternalError
+	}
+
+	publisher.Publish(topic, beacon.Message{Payload: payload})
 	return nil
 }

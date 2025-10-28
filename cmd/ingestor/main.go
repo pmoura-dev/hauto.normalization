@@ -11,6 +11,7 @@ import (
 	"github.com/pmoura-dev/beacon/publishers"
 	"github.com/pmoura-dev/beacon/subscribers"
 	"github.com/pmoura-dev/hauto.normalization/internal/ingestor/handlers"
+	"github.com/pmoura-dev/hauto.normalization/internal/ingestor/middleware"
 )
 
 func main() {
@@ -25,6 +26,8 @@ func main() {
 	r := beacon.NewRouter(
 		beacon.NewBroker(subscriber, publisher),
 	)
+
+	r.UseMiddleware(middleware.GetDeviceData)
 
 	addShellySubscriptions(r)
 
@@ -43,5 +46,7 @@ func main() {
 }
 
 func addShellySubscriptions(r *beacon.Router) {
-	_ = r.AddSubscription("shellies/{shelly_id}/color/0/status", handlers.ShellyState)
+	_ = r.AddSubscription("shellies/{external_id}/online", handlers.ShellyAvailability)
+
+	_ = r.AddSubscription("shellies/{external_id}/color/0/status", handlers.ShellyColorBulbState)
 }

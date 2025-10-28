@@ -8,39 +8,39 @@ import (
 	"github.com/pmoura-dev/hauto.normalization/pkg/types"
 )
 
-type ShellyColorBulbTranslator struct{}
+func ShellyColorBulbToLightTranslator(
+	payload []byte,
+	deviceID uuid.UUID,
+	deviceType types.DeviceType,
+) ([]byte, error) {
 
-func (t ShellyColorBulbTranslator) TranslateIngestion(deviceID uuid.UUID, deviceType string, message []byte) ([]byte, error) {
-
-	shellyMsg := shellyColorBulbStateMessage{}
-	err := json.Unmarshal(message, &shellyMsg)
+	shellyPayload := shellyColorBulbStateMessage{}
+	err := json.Unmarshal(payload, &shellyPayload)
 	if err != nil {
 		return nil, err
 	}
 
-	switch deviceType {
-	case "light":
-		return t.toLightStateMessage(deviceID, shellyMsg)
+	lightMessage := types.LightStateMessage{
+		BaseStateMessage: types.BaseStateMessage{
+			DeviceID:   deviceID,
+			DeviceType: deviceType,
+			Timestamp:  time.Now(),
+		},
+		State: types.LightState{
+			IsOn: shellyPayload.IsOn,
+		},
 	}
 
-	return nil, nil
+	translatedPayload, err := json.Marshal(lightMessage)
+	if err != nil {
+		return nil, err
+	}
+
+	return translatedPayload, nil
 }
 
-func (t ShellyColorBulbTranslator) toLightStateMessage(deviceID uuid.UUID, shellyMsg shellyColorBulbStateMessage) ([]byte, error) {
-	lightMsg := types.LightStateMessage{
-		BaseStateMessage: types.BaseStateMessage{
-			DeviceID:  deviceID,
-			Timestamp: time.Now(),
-		},
-		IsOn: shellyMsg.IsOn,
-	}
+func ShellyColorBulbToColorLightTranslator() {
 
-	payload, err := json.Marshal(lightMsg)
-	if err != nil {
-		return nil, err
-	}
-
-	return payload, nil
 }
 
 type shellyColorBulbStateMessage struct {
